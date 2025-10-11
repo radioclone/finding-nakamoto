@@ -2,6 +2,8 @@
 
 A full-stack reference implementation that showcases **best practices for building modern Stacks crypto experiences with Turnkey embedded wallets**. The app unifies a user-controlled *Holding Wallet* with a delegated *Trading Wallet* on a single page, layers in automated DCA flows, and ships opinionated styling that mirrors production crypto dashboards.
 
+![SBTC.Cool Screenshot](https://sbtc.cool/og-image.jpg)
+
 ## Why This Project Matters
 - Demonstrates how to keep self-custodied keys client-side while delegating automation safely with Turnkey policies.
 - Provides reusable UI/UX patterns for presenting multiple wallet types without confusing newcomers.
@@ -20,7 +22,9 @@ A full-stack reference implementation that showcases **best practices for buildi
 
 1. Install dependencies: `npm install`
 2. Run the app: `npm run dev`
-3. Open `http://localhost:3000` and explore the unified wallet dashboard.
+3. Open `http://localhost:5002` and explore the unified wallet dashboard.
+
+Docs site: [sbtc.cool/docs](https://sbtc.cool/docs)
 
 ---
 
@@ -38,18 +42,7 @@ A full-stack reference implementation that showcases **best practices for buildi
 | **Holding Wallet** | 100% client-side (user seed export, manual signatures) | Create accounts, view balances, sign messages, transfer STX/sBTC, flag destinations for automation | `src/app/components/StacksWallet.tsx` |
 | **Trading Wallet** | Server-provisioned Turnkey sub-org with delegated policies | Policy-guarded swaps, DCA, rebalancing, automated returns to holding destinations | `src/app/components/TradingWalletModule.tsx` |
 
-```mermaid
-graph LR
-  User[User Browser] --> App[Unified Wallet Dashboard]
-  App -->|Self-custody actions| Holding[Holding Wallet (Wallet Kit)]
-  App -->|Configure automation| Trading[Trading Wallet Module]
-  Trading -->|Provision sub-org & policy| TurnkeySDK[Turnkey Server SDK]
-  Trading -->|Schedule swaps & returns| Automation[Automation APIs]
-  Automation -->|Optional logs & history| Persistence[(Persistence Layer)]
-  Automation -->|Swap & transfer calls| StacksAPIs[/Stacks & Turnkey APIs/]
-  StacksAPIs -->|Execute STX⇄sBTC swaps| StacksNet[Stacks Testnet]
-  StacksAPIs -->|Send proceeds back| Holding
-```
+![SBTC.Cool System Architecture](./public/delegate.jpg)
 
 ---
 
@@ -65,7 +58,7 @@ graph LR
   - Aggregates delegated wallets + accounts, fetches balances, and exposes test transfer/swap buttons.
   - Hosts the DCA schedule builder with direction presets, amount chips, slippage guard, cron or test cadence (seconds-based), and destination sync.
 
-- **`AutomationSchedules.tsx`** (`src/app/components/AutomationSchedules.tsx`)
+- **`Automation.tsx`** (`src/app/components/Automation.tsx`)
   - Dedicated automation playground that chains three steps: STX→sBTC swap, sBTC→STX swap, and STX transfer back to the holding wallet.
   - Pulls flattened trading accounts from the DB API (`/api/db/trading-wallets`) and animates execution progress with per-step status cards.
   - Validates balances via Hiro API, supports manual balance refresh, and logs transaction links per step.
@@ -140,7 +133,7 @@ Supporting APIs live under:
 ## Testing & Validation
 - **TypeScript / Build**: `npm run build` (uses Turbopack) ensures type safety and Next.js compilation.
 - **Automation Dry Runs**: Use the "Test cadence" option in the DCA form to trigger second-level runs and inspect the per-step UI before pointing at real cron jobs.
-- **Balance Checks**: `AutomationSchedules.tsx` and trading module both hit Hiro APIs—ensure `NEXT_PUBLIC_HIRO_API_KEY*` values are set when rate limiting occurs.
+- **Balance Checks**: `Automation.tsx` and trading module both hit Hiro APIs—ensure `NEXT_PUBLIC_HIRO_API_KEY*` values are set when rate limiting occurs.
 - **Persistence Checks**: If you plug in a database, verify schedule rows and execution logs after test runs.
 
 ---
