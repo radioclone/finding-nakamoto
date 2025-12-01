@@ -1,59 +1,71 @@
-# Finding Nakamoto – sBTC Cool Wallet Automation Demo
+# Finding Nakamoto – Smart Wallet Core (Turnkey x Stacks)
 
-Finding Nakamoto is the reference build for the **sBTC.cool** experience: a browser-based dashboard that shows how to pair self-custodied Stacks wallets with tightly scoped automation flows. The goal is to demonstrate how Stacks builders can walk users from "connect wallet" to "run recurring swap strategies" without ever leaving the interface.
+This repo contains the core smart-wallet infrastructure for the **Finding Nakamoto** project in the Stacks DeGrants program (issue #59).
 
-> Grant issue: [stacksgov/decentralized-grants#59](https://github.com/stacksgov/decentralized-grants/issues/59)
+Its job is to prototype how self-custodied and policy-guarded wallets on Stacks can be managed through Turnkey and exposed to a UI.  
+This is **foundation work** that will support Milestone 1, 2, and 3 frontends later.
 
-## What This App Demonstrates
-- Holding Wallet tab for classic self-custody: create/restore keys, export seeds, and manually initiate transfers.
-- Trading Wallet tab for policy-guarded automations that can DCA into sBTC then sweep returns to a trusted destination.
-- Automation tab that chains swaps and transfers, surfaces live Hiro txids, and highlights how to orchestrate Stacks jobs from the browser.
-- Turnkey is used strictly for **account abstraction** (passkey/OAuth login + wallet kit UX). Every automation flow requires the user to opt in and keeps custody constraints transparent.
+Grant issue: https://github.com/stacksgov/decentralized-grants/issues/59
 
-## Architecture Overview
-- **Front end**: Next.js 15 App Router with React 19, Tailwind CSS v4, `next-themes`, and client-only entry points (`src/app/page.tsx`, `src/app/components/*`). Zustand caches wallet metadata to avoid thrashing the Turnkey APIs.
-- **Wallet kit provider**: `@turnkey/react-wallet-kit` wraps the tree (`src/app/providers/TurnkeyProvider.tsx`) so the UI can authenticate, derive Stacks accounts (`m/44'/5757'`), and sign payloads without exposing raw private keys.
-- **Server routes**: Next Route Handlers under `src/app/api` provision trading orgs, call Hiro endpoints, and delegate signing via `@turnkey/sdk-server`.
-- **Database**: Drizzle ORM + Postgres capture Turnkey organization IDs, wallet IDs, and derived account metadata for fast automation lookups (`src/lib/db/schema.ts`).
-- **Automation loop**: `/api/turnkey/automation-step` stitches swap + transfer endpoints, fetches fresh nonces from Hiro, and returns txids back to the client for progress reporting.
+---
 
-## Tools & Services
-- Next.js 15.5 w/ React 19, Tailwind 4, and TypeScript 5 for the UI.
-- `@turnkey/react-wallet-kit` + `@turnkey/sdk-server` for account abstraction only (passkey auth, wallet creation, delegated signatures).
-- `@stacks/transactions` for deriving addresses and building swap/transfer payloads.
-- Drizzle ORM + `postgres` client for persistence, alongside Drizzle Kit for migrations.
-- Zustand state slices (`src/store/useTurnkeyStore.ts`) to memoize wallet fetches.
-- Hiro API helpers (`src/lib/hiro-api-helpers.ts`) rotate API keys when fetching balances, nonces, or broadcasting transactions.
+## What’s implemented right now
 
-## How the Flow Works
-### 1. Holding Wallet (client-side)
-- The Turnkey provider injects `handleLogin`, `createWallet`, `createWalletAccounts`, and an authenticated `httpClient`.
-- Users authenticate with passkeys/OAuth via Wallet Kit, derive Stacks accounts, and sign transfers directly in the browser.
-- No automation is triggered here—this is the pure self-custody surface that demonstrates account abstraction UX.
+- Next.js 15 + React 19 app with a multi-tab dashboard (Holding / Trading / Automation).
+- Turnkey integration for:
+  - authenticating users,
+  - creating wallets and accounts,
+  - signing Stacks transactions via Turnkey (client or delegated server keys).
+- API routes to:
+  - create per-user Turnkey sub-orgs and trading wallets,
+  - sync org / wallet / account metadata into Postgres,
+  - build and sign step-by-step automation jobs (e.g. swap, unwind, transfer).
+- Drizzle ORM schema for trading organizations, wallets, and accounts, keyed by Turnkey IDs and enriched with Stacks addresses.
 
-### 2. Trading Wallet Provisioning (server-side)
-- `/api/turnkey/grant-access` (Next Route Handler) accepts a logged-in user ID, spins up a Turnkey sub-organization, inserts the delegate API key, and seeds a trading wallet with Stacks derivation paths.
-- A cron-compatible endpoint (`/api/cron/fetchSubOrgs`) syncs those sub-orgs + wallets into Postgres so the dashboard can query them without hammering Turnkey directly.
-- `/api/db/trading-wallets` exposes the cached org/wallet/account tree to the Automation tab.
+There is **no SIP-009 mint or narrative / game UI in this repo yet**.  
+This is strictly the under-the-hood wallet + automation layer.
 
-### 3. Automation Pipeline
-- The Automation UI flattens trading wallets and lets the user select swap direction, cadence, slippage, and destination safeguards.
-- Each step POSTs to `/api/turnkey/automation-step`, which:
-  1. Finds the account metadata in Postgres and derives the Stacks address from its public key.
-  2. Fetches a fresh nonce from Hiro (`extended/v1/address/{addr}/nonces`).
-  3. Calls the appropriate `/api/stacks/*` endpoint to build + sign swaps or transfers via Turnkey’s delegated API key.
-  4. Broadcasts to Hiro, returning txids so the UI can animate status updates.
+---
 
-## Local Development
-```bash
-npm install
-npm run dev # http://localhost:5002
-```
+## Architecture (high level)
 
-Environment variables live in `.env.local`. At a minimum you will need the Turnkey base URL, organization ID, auth proxy config ID, delegated API keys, Hiro API keys, and `NEXT_PUBLIC_APP_URL`. See `src/app/providers/TurnkeyProvider.tsx` and the route handlers under `src/app/api` for the exact names.
+- **App**  
+  - Next.js App Router dashboard rendered on the client (`src/app/page.tsx`).  
+  - Tabs for Holding, Trading, and Automation, all using a shared `useTurnkey()` hook.
 
-## Reference Docs
-- `docs/turnkey_stacks.md` – in-depth Turnkey + Stacks integration guide.
-- `src/app/api/turnkey/automation-step/route.ts` – orchestration logic for multi-step jobs.
-- `src/lib/db/queries.ts` – helpers for reading/writing cached trading metadata.
-- `AUTOMATION_REFACTOR.md` – notes on upcoming automation improvements.
+- **Providers**  
+  - `TurnkeyProvider` wraps the app with Turnkey’s React wallet kit and reads all keys/IDs from environment variables.  
+  - Theme provider keeps the UI consistent (dark mode etc.).
+
+- **Server routes**  
+  - `/api/turnkey/grant-access` – creates a Turnkey sub-org, seeds a trading wallet, and sets up delegate access.  
+  - `/api/cron/fetchSubOrgs` – caches org / wallet / account metadata into Postgres.  
+  - `/api/turnkey/automation-step` – builds Stacks transactions, has Turnkey sign them, and broadcasts via Hiro.
+
+- **Persistence**  
+  - Drizzle ORM + Postgres for trading orgs, wallets, and accounts (`src/lib/db/schema.ts`).  
+  - Zustand store for lightweight client-side cache so the UI doesn’t refetch Turnkey on every render.
+
+---
+
+## Status and relation to milestones
+
+- This repo is **foundation / core dev** for Finding Nakamoto.  
+- It supports pieces of **Milestone 1, 2, and 3** by handling wallets and automation logic in one place.
+- The SIP-009 NFT mint flow and narrative / learning UI will be built on top of this in separate frontend work.
+
+Planned next steps:
+- Keep consolidating core wallet / automation logic here.
+- Expose a minimal API surface that a Milestone-1 browser demo can call (connect, show balances, trigger mint once SIP-009 is ready).
+
+---
+
+**Status update – core dev consolidation**
+
+I’ve been working in parallel on the different pieces of Milestones 1, 2, and 3 (smart-wallet core, automation logic, audio/VO, and early UI tests). I’ve now created a main repo to consolidate the foundation and under-the-hood work:
+
+- Smart wallet core repo: https://github.com/radioclone/finding-nakamoto
+
+This repo is currently focused on the Turnkey-based wallet + automation backend (Next.js app, API routes, Drizzle/Postgres). There is no SIP-009 mint or narrative walkthrough in this repo yet; that will be wired in from the UI side next.
+
+Given the amount of core work I’m consolidating, I’d like to take an additional week (until around **Dec 8–10**) to keep integrating this foundation and then surface a clean Milestone 1 browser demo and recording.
